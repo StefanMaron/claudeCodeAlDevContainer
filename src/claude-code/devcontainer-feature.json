@@ -1,9 +1,9 @@
 {
     "id": "claude-code",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "name": "Claude Code",
     "documentationURL": "https://github.com/StefanMaron/claudeCodeAlDevContainer/tree/master/src/claude-code",
-    "description": "Install the Claude Code CLI for AI-powered coding assistance",
+    "description": "Install Claude Code CLI with optional network firewall for safe sandboxed usage",
     "options": {
         "version": {
             "type": "string",
@@ -11,6 +11,10 @@
             "description": "Version to install ('latest', 'stable', or a specific version like '1.0.58')"
         }
     },
+    "capAdd": [
+        "NET_ADMIN",
+        "NET_RAW"
+    ],
     "installsAfter": [
         "ghcr.io/devcontainers/features/common-utils"
     ]

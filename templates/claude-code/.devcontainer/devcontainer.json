@@ -6,9 +6,28 @@
     },
     "remoteUser": "vscode",
     "mounts": [
-        // Named volumes persist auth credentials across container rebuilds.
-        // All devcontainers using the same volume names share authentication.
         "source=claude-code-config,target=/home/vscode/.claude,type=volume",
         "source=claude-code-data,target=/home/vscode/.local/share/claude,type=volume"
-    ]
+    ],
+    "containerEnv": {
+        "GIT_TERMINAL_PROMPT": "0",
+        "SSH_AUTH_SOCK": "",
+        "GIT_ASKPASS": "/bin/false",
+        "GH_TOKEN": "",
+        "GITHUB_TOKEN": "",
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "credential.helper",
+        "GIT_CONFIG_VALUE_0": "/bin/false"
+    },
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "github.gitAuthentication": false,
+                "git.terminalAuthentication": false
+            }
+        }
+    },
+    "postCreateCommand": "echo '{\"hasCompletedOnboarding\":true,\"numStartups\":1,\"installMethod\":\"native\"}' > ~/.claude.json",
+    "postStartCommand": "sudo /usr/local/bin/init-firewall.sh",
+    "waitFor": "postStartCommand"
 }
