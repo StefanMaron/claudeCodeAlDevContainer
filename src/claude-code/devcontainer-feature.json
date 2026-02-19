@@ -1,0 +1,17 @@
+{
+    "id": "claude-code",
+    "version": "1.0.0",
+    "name": "Claude Code",
+    "documentationURL": "https://github.com/OWNER/claudeCodeAlDevContainer/tree/main/src/claude-code",
+    "description": "Install the Claude Code CLI for AI-powered coding assistance",
+    "options": {
+        "version": {
+            "type": "string",
+            "default": "latest",
+            "description": "Version to install ('latest', 'stable', or a specific version like '1.0.58')"
+        }
+    },
+    "installsAfter": [
+        "ghcr.io/devcontainers/features/common-utils"
+    ]
+}

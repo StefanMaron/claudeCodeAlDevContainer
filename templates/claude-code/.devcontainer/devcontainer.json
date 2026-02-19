@@ -1,0 +1,19 @@
+{
+    "name": "Claude Code",
+    "image": "mcr.microsoft.com/devcontainers/base:${templateOption:imageVariant}",
+    "features": {
+        // TODO: Replace OWNER/REPO with your GitHub owner and repository name
+        "ghcr.io/OWNER/claudeCodeAlDevContainer/claude-code:latest": {}
+    },
+    "remoteUser": "vscode",
+    // Ensure ~/.claude exists on the host before mounting
+    "initializeCommand": "mkdir -p ${HOME}/.claude",
+    "mounts": [
+        // Bind-mount host's ~/.claude for OAuth credential reuse
+        "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached"
+    ],
+    "remoteEnv": {
+        // Forward API key from host if set (takes priority over OAuth credentials)
+        "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}"
+    }
+}
