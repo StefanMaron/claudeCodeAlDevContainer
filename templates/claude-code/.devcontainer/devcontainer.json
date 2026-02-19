@@ -5,14 +5,10 @@
         "ghcr.io/stefanmaron/claudeCodeAlDevContainer/claude-code:latest": {}
     },
     "remoteUser": "vscode",
-    // Ensure ~/.claude exists on the host before mounting
-    "initializeCommand": "mkdir -p ${HOME}/.claude",
     "mounts": [
-        // Bind-mount host's ~/.claude for OAuth credential reuse
-        "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached"
-    ],
-    "remoteEnv": {
-        // Forward API key from host if set (takes priority over OAuth credentials)
-        "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}"
-    }
+        // Named volumes persist auth credentials across container rebuilds.
+        // All devcontainers using the same volume names share authentication.
+        "source=claude-code-config,target=/home/vscode/.claude,type=volume",
+        "source=claude-code-data,target=/home/vscode/.local/share/claude,type=volume"
+    ]
 }

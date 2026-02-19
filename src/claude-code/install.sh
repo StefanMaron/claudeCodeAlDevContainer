@@ -31,4 +31,13 @@ fi
 echo "export PATH=\"${_REMOTE_USER_HOME}/.local/bin:\$PATH\"" > /etc/profile.d/claude-code.sh
 chmod +x /etc/profile.d/claude-code.sh
 
+# Pre-seed ~/.claude.json to skip onboarding wizard
+# Claude Code checks hasCompletedOnboarding to decide whether to show the first-run flow.
+# Without this, every new container triggers full onboarding even if credentials exist.
+CLAUDE_JSON="${_REMOTE_USER_HOME}/.claude.json"
+if [ ! -f "${CLAUDE_JSON}" ]; then
+    echo '{"hasCompletedOnboarding":true,"numStartups":1,"installMethod":"native"}' > "${CLAUDE_JSON}"
+    chown "${_REMOTE_USER}:${_REMOTE_USER}" "${CLAUDE_JSON}"
+fi
+
 echo "Claude Code installed successfully."
