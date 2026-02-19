@@ -2,7 +2,7 @@
     "id": "claude-code",
     "version": "1.0.0",
     "name": "Claude Code",
-    "documentationURL": "https://github.com/OWNER/claudeCodeAlDevContainer/tree/main/src/claude-code",
+    "documentationURL": "https://github.com/StefanMaron/claudeCodeAlDevContainer/tree/master/src/claude-code",
     "description": "Install the Claude Code CLI for AI-powered coding assistance",
     "options": {
         "version": {

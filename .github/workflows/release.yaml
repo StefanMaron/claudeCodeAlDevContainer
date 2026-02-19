@@ -3,11 +3,11 @@ name: Release Dev Container Features & Templates
 on:
   push:
     branches:
-      - main
+      - master
 
 jobs:
   deploy:
-    if: ${{ github.ref == 'refs/heads/main' }}
+    if: ${{ github.ref == 'refs/heads/master' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
