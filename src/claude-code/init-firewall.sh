@@ -2,12 +2,19 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-echo "Configuring network firewall..."
+echo "=== Configuring network firewall ==="
 
-# 1. Extract Docker DNS rules BEFORE flushing
+# 1. Disable IPv6 entirely — prevents IPv6 firewall bypass
+sysctl -w net.ipv6.conf.all.disable_ipv6=1
+sysctl -w net.ipv6.conf.default.disable_ipv6=1
+ip6tables -P INPUT DROP
+ip6tables -P FORWARD DROP
+ip6tables -P OUTPUT DROP
+
+# 2. Extract Docker DNS rules BEFORE flushing
 DOCKER_DNS_RULES=$(iptables-save -t nat | grep "127\.0\.0\.11" || true)
 
-# Flush existing rules
+# Flush existing IPv4 rules
 iptables -F
 iptables -X
 iptables -t nat -F
@@ -16,7 +23,7 @@ iptables -t mangle -F
 iptables -t mangle -X
 ipset destroy allowed-domains 2>/dev/null || true
 
-# 2. Restore Docker internal DNS resolution
+# 3. Restore Docker internal DNS resolution
 if [ -n "$DOCKER_DNS_RULES" ]; then
     echo "Restoring Docker DNS rules..."
     iptables -t nat -N DOCKER_OUTPUT 2>/dev/null || true
@@ -26,27 +33,26 @@ else
     echo "No Docker DNS rules to restore"
 fi
 
-# 3. Allow essential traffic before restrictions
-# DNS
-iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
-iptables -A INPUT -p udp --sport 53 -j ACCEPT
+# 4. Allow essential traffic before restrictions
+# DNS — restricted to Docker internal resolver only (blocks DNS tunneling)
+iptables -A OUTPUT -p udp --dport 53 -d 127.0.0.11 -j ACCEPT
+iptables -A OUTPUT -p tcp --dport 53 -d 127.0.0.11 -j ACCEPT
+iptables -A INPUT -p udp --sport 53 -s 127.0.0.11 -j ACCEPT
+iptables -A INPUT -p tcp --sport 53 -s 127.0.0.11 -j ACCEPT
 # Localhost
 iptables -A INPUT -i lo -j ACCEPT
 iptables -A OUTPUT -o lo -j ACCEPT
 
-# 4. Create ipset for allowed domains
+# 5. Create ipset for allowed domains
 ipset create allowed-domains hash:net
 
-# 5. Resolve and add allowed domains
-# Anthropic services (Claude Code API, auth, telemetry)
-# VS Code services (extensions, updates)
+# 6. Resolve and add allowed domains
+# Only Anthropic-owned services and VS Code infrastructure
 for domain in \
     "api.anthropic.com" \
     "claude.ai" \
     "console.anthropic.com" \
-    "sentry.io" \
     "statsig.anthropic.com" \
-    "statsig.com" \
     "marketplace.visualstudio.com" \
     "vscode.blob.core.windows.net" \
     "update.code.visualstudio.com"; do
@@ -65,49 +71,84 @@ for domain in \
     done < <(echo "$ips")
 done
 
-# 6. Allow Docker host network
+# 7. Allow Docker host gateway only (not the entire /24 subnet)
 HOST_IP=$(ip route | grep default | cut -d" " -f3)
 if [ -n "$HOST_IP" ]; then
-    HOST_NETWORK=$(echo "$HOST_IP" | sed "s/\.[0-9]*$/.0\/24/")
-    echo "Host network: $HOST_NETWORK"
-    iptables -A INPUT -s "$HOST_NETWORK" -j ACCEPT
-    iptables -A OUTPUT -d "$HOST_NETWORK" -j ACCEPT
+    echo "Host gateway: $HOST_IP"
+    iptables -A INPUT -s "$HOST_IP" -j ACCEPT
+    iptables -A OUTPUT -d "$HOST_IP" -j ACCEPT
 else
-    echo "WARNING: Could not detect host network"
+    echo "WARNING: Could not detect host gateway"
 fi
 
-# 7. Set default policies to DROP
+# 8. Set default policies to DROP
 iptables -P INPUT DROP
 iptables -P FORWARD DROP
 iptables -P OUTPUT DROP
 
-# 8. Allow established connections
+# 9. Allow established connections
 iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 
-# 9. Allow only traffic to whitelisted domains
+# 10. Allow only traffic to whitelisted domains
 iptables -A OUTPUT -m set --match-set allowed-domains dst -j ACCEPT
 
-# 10. Reject everything else with immediate feedback
+# 11. Log and reject everything else
+iptables -A OUTPUT -j LOG --log-prefix "FIREWALL-BLOCKED: " --log-level 4 -m limit --limit 5/min
 iptables -A OUTPUT -j REJECT --reject-with icmp-admin-prohibited
 
-# 11. Remove general sudo access — keep only the firewall-specific rule
+# 12. Harden sudo access
+# Remove general sudo files (keep only firewall-specific rule)
 find /etc/sudoers.d/ -type f ! -name '*-firewall' -delete 2>/dev/null || true
+# Disable %sudo group in main sudoers file
+sed -i 's/^%sudo.*/#&/' /etc/sudoers 2>/dev/null || true
+# Remove container user from sudo group
+CONTAINER_USER=$(stat -c '%U' /proc/1 2>/dev/null || echo "vscode")
+deluser "$CONTAINER_USER" sudo 2>/dev/null || true
 
-echo "Firewall configured. General sudo access removed."
+# 13. Install system-level git pre-push hook that blocks all pushes
+mkdir -p /usr/share/git-core/templates/hooks
+cat > /usr/share/git-core/templates/hooks/pre-push << 'HOOK'
+#!/bin/sh
+echo "ERROR: git push is blocked in this sandboxed environment."
+exit 1
+HOOK
+chmod +x /usr/share/git-core/templates/hooks/pre-push
+# Also install it in the workspace if a git repo exists
+find /workspaces -name ".git" -type d -exec sh -c 'mkdir -p "$1/hooks" && cp /usr/share/git-core/templates/hooks/pre-push "$1/hooks/pre-push"' _ {} \; 2>/dev/null || true
 
-# 12. Verify
+# 14. Make the firewall script immutable (prevents modification even by root)
+chattr +i /usr/local/bin/init-firewall.sh 2>/dev/null || true
+
+echo "=== Firewall configured. Sudo hardened. ==="
+
+# 15. Verify
 echo "Verifying firewall..."
+PASS=true
+
 if curl --connect-timeout 5 https://github.com >/dev/null 2>&1; then
-    echo "WARNING: Firewall verification failed — github.com is reachable"
+    echo "FAIL: github.com is reachable"
+    PASS=false
 else
     echo "PASS: github.com is blocked"
+fi
+
+if curl --connect-timeout 5 https://example.com >/dev/null 2>&1; then
+    echo "FAIL: example.com is reachable"
+    PASS=false
+else
+    echo "PASS: example.com is blocked"
 fi
 
 if curl --connect-timeout 5 https://api.anthropic.com >/dev/null 2>&1; then
     echo "PASS: api.anthropic.com is reachable"
 else
-    echo "WARNING: api.anthropic.com is unreachable — Claude Code may not work"
+    echo "WARN: api.anthropic.com is unreachable — Claude Code may not work"
 fi
 
-echo "Firewall setup complete."
+if [ "$PASS" = true ]; then
+    echo "=== Firewall verification PASSED ==="
+else
+    echo "=== Firewall verification FAILED ==="
+    exit 1
+fi
