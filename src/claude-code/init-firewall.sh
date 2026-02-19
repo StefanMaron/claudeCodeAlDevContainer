@@ -11,10 +11,15 @@ ip6tables -P INPUT DROP
 ip6tables -P FORWARD DROP
 ip6tables -P OUTPUT DROP
 
-# 2. Extract Docker DNS rules BEFORE flushing
+# 2. Set DROP policies FIRST — closes the race window during flush
+iptables -P INPUT DROP
+iptables -P FORWARD DROP
+iptables -P OUTPUT DROP
+
+# 3. Extract Docker DNS rules BEFORE flushing
 DOCKER_DNS_RULES=$(iptables-save -t nat | grep "127\.0\.0\.11" || true)
 
-# Flush existing IPv4 rules
+# Flush existing IPv4 rules (policies remain DROP throughout)
 iptables -F
 iptables -X
 iptables -t nat -F
@@ -23,7 +28,7 @@ iptables -t mangle -F
 iptables -t mangle -X
 ipset destroy allowed-domains 2>/dev/null || true
 
-# 3. Restore Docker internal DNS resolution
+# 4. Restore Docker internal DNS resolution
 if [ -n "$DOCKER_DNS_RULES" ]; then
     echo "Restoring Docker DNS rules..."
     iptables -t nat -N DOCKER_OUTPUT 2>/dev/null || true
@@ -33,7 +38,7 @@ else
     echo "No Docker DNS rules to restore"
 fi
 
-# 4. Allow essential traffic before restrictions
+# 5. Allow essential traffic before restrictions
 # DNS — restricted to Docker internal resolver only (blocks DNS tunneling)
 iptables -A OUTPUT -p udp --dport 53 -d 127.0.0.11 -j ACCEPT
 iptables -A OUTPUT -p tcp --dport 53 -d 127.0.0.11 -j ACCEPT
@@ -43,10 +48,10 @@ iptables -A INPUT -p tcp --sport 53 -s 127.0.0.11 -j ACCEPT
 iptables -A INPUT -i lo -j ACCEPT
 iptables -A OUTPUT -o lo -j ACCEPT
 
-# 5. Create ipset for allowed domains
+# 6. Create ipset for allowed domains
 ipset create allowed-domains hash:net
 
-# 6. Resolve and add allowed domains
+# 7. Resolve and add allowed domains
 # Only Anthropic-owned services and VS Code infrastructure
 for domain in \
     "api.anthropic.com" \
@@ -71,7 +76,7 @@ for domain in \
     done < <(echo "$ips")
 done
 
-# 7. Allow Docker host gateway only (not the entire /24 subnet)
+# 8. Allow Docker host gateway only (not the entire /24 subnet)
 HOST_IP=$(ip route | grep default | cut -d" " -f3)
 if [ -n "$HOST_IP" ]; then
     echo "Host gateway: $HOST_IP"
@@ -81,23 +86,18 @@ else
     echo "WARNING: Could not detect host gateway"
 fi
 
-# 8. Set default policies to DROP
-iptables -P INPUT DROP
-iptables -P FORWARD DROP
-iptables -P OUTPUT DROP
-
 # 9. Allow established connections
 iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 
-# 10. Allow only traffic to whitelisted domains
+# 10. Allow only outbound traffic to whitelisted domains
 iptables -A OUTPUT -m set --match-set allowed-domains dst -j ACCEPT
 
 # 11. Log and reject everything else
 iptables -A OUTPUT -j LOG --log-prefix "FIREWALL-BLOCKED: " --log-level 4 -m limit --limit 5/min
 iptables -A OUTPUT -j REJECT --reject-with icmp-admin-prohibited
 
-# 12. Harden sudo access
+# 12. Harden sudo access — remove all sudo except the firewall rule
 # Remove general sudo files (keep only firewall-specific rule)
 find /etc/sudoers.d/ -type f ! -name '*-firewall' -delete 2>/dev/null || true
 # Disable %sudo group in main sudoers file
@@ -118,7 +118,9 @@ chmod +x /usr/share/git-core/templates/hooks/pre-push
 find /workspaces -name ".git" -type d -exec sh -c 'mkdir -p "$1/hooks" && cp /usr/share/git-core/templates/hooks/pre-push "$1/hooks/pre-push"' _ {} \; 2>/dev/null || true
 
 # 14. Make the firewall script immutable (prevents modification even by root)
-chattr +i /usr/local/bin/init-firewall.sh 2>/dev/null || true
+if ! chattr +i /usr/local/bin/init-firewall.sh 2>/dev/null; then
+    echo "WARNING: chattr +i failed — firewall script is NOT immutable (e2fsprogs missing or unsupported filesystem)"
+fi
 
 echo "=== Firewall configured. Sudo hardened. ==="
 

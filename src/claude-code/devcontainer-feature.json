@@ -1,6 +1,6 @@
 {
     "id": "claude-code",
-    "version": "1.3.0",
+    "version": "1.3.1",
     "name": "Claude Code",
     "documentationURL": "https://github.com/StefanMaron/claudeCodeAlDevContainer/tree/master/src/claude-code",
     "description": "Install Claude Code CLI with optional network firewall for safe sandboxed usage",
