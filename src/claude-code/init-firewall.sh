@@ -4,6 +4,10 @@ IFS=$'\n\t'
 
 echo "=== Configuring network firewall ==="
 
+# 0. Immediate cleanup of VS Code IPC sockets (before firewall rules)
+echo "Cleaning up VS Code IPC sockets..."
+find /tmp -maxdepth 2 \( -name 'vscode-*.sock' -o -name 'vscode-remote-containers-*.js' \) -delete 2>/dev/null || true
+
 # 1. Disable IPv6 entirely — prevents IPv6 firewall bypass
 sysctl -w net.ipv6.conf.all.disable_ipv6=1
 sysctl -w net.ipv6.conf.default.disable_ipv6=1
@@ -122,9 +126,23 @@ if ! chattr +i /usr/local/bin/init-firewall.sh 2>/dev/null; then
     echo "WARNING: chattr +i failed — firewall script is NOT immutable (e2fsprogs missing or unsupported filesystem)"
 fi
 
-echo "=== Firewall configured. Sudo hardened. ==="
+# 15. Make devcontainer.json files immutable (prevents agents from adding host mounts or malicious initializeCommand)
+find /workspaces -name "devcontainer.json" -path "*/.devcontainer/*" -exec sh -c '
+    if chattr +i "$1" 2>/dev/null; then
+        echo "Locked: $1"
+    else
+        echo "WARNING: chattr +i failed on $1 (unsupported filesystem)"
+    fi
+' _ {} \;
 
-# 15. Verify
+# 16. Make harden-env.sh immutable (prevents agents from disabling IPC hardening)
+if ! chattr +i /usr/local/bin/harden-env.sh 2>/dev/null; then
+    echo "WARNING: chattr +i failed — harden-env.sh is NOT immutable"
+fi
+
+echo "=== Firewall configured. Sudo hardened. IPC sockets cleaned. ==="
+
+# 17. Verify
 echo "Verifying firewall..."
 PASS=true
 
@@ -154,3 +172,15 @@ else
     echo "=== Firewall verification FAILED ==="
     exit 1
 fi
+
+# 18. Background socket cleanup daemon — catches late-created VS Code IPC sockets.
+# VS Code creates some sockets 60+ seconds after container attach.
+# Runs 10 passes at 30-second intervals (~5 minutes total), then exits.
+(
+    for i in $(seq 1 10); do
+        sleep 30
+        find /tmp -maxdepth 2 \( -name 'vscode-*.sock' -o -name 'vscode-remote-containers-*.js' \) -delete 2>/dev/null || true
+    done
+) &
+disown
+echo "Background socket cleanup daemon started (PID $!)"

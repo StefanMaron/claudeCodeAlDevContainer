@@ -48,6 +48,23 @@ cp "$(dirname "$0")/init-firewall.sh" /usr/local/bin/init-firewall.sh
 chmod 755 /usr/local/bin/init-firewall.sh
 chown root:root /usr/local/bin/init-firewall.sh
 
+# Install environment hardening script (strips VS Code IPC escape vectors)
+cp "$(dirname "$0")/harden-env.sh" /usr/local/bin/harden-env.sh
+chmod 755 /usr/local/bin/harden-env.sh
+chown root:root /usr/local/bin/harden-env.sh
+
+# Inject harden-env.sh as the first line of .bashrc so it runs for ALL bash sessions.
+# Must be BEFORE the interactive guard ([ -z "$PS1" ] && return) to catch non-interactive shells too.
+BASHRC="${_REMOTE_USER_HOME}/.bashrc"
+if [ -f "$BASHRC" ]; then
+    if ! grep -q 'harden-env.sh' "$BASHRC"; then
+        sed -i '1i source /usr/local/bin/harden-env.sh' "$BASHRC"
+    fi
+else
+    echo 'source /usr/local/bin/harden-env.sh' > "$BASHRC"
+    chown "${_REMOTE_USER}:${_REMOTE_USER}" "$BASHRC"
+fi
+
 # Grant the container user passwordless sudo ONLY for the firewall script
 echo "${_REMOTE_USER} ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh" > /etc/sudoers.d/${_REMOTE_USER}-firewall
 chmod 0440 /etc/sudoers.d/${_REMOTE_USER}-firewall

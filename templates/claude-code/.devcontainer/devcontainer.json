@@ -4,6 +4,9 @@
     "features": {
         "ghcr.io/stefanmaron/claudeCodeAlDevContainer/claude-code:latest": {}
     },
+    "runArgs": [
+        "--cap-drop=ALL"
+    ],
     "remoteUser": "vscode",
     "mounts": [
         "source=claude-code-config,target=/home/vscode/.claude,type=volume",
@@ -13,11 +16,24 @@
         "GIT_TERMINAL_PROMPT": "0",
         "SSH_AUTH_SOCK": "",
         "GIT_ASKPASS": "/bin/false",
+        "VSCODE_GIT_ASKPASS_MAIN": "",
+        "VSCODE_GIT_ASKPASS_NODE": "",
+        "VSCODE_GIT_ASKPASS_EXTRA_ARGS": "",
         "GH_TOKEN": "",
         "GITHUB_TOKEN": "",
         "GIT_CONFIG_COUNT": "1",
         "GIT_CONFIG_KEY_0": "credential.helper",
         "GIT_CONFIG_VALUE_0": "/bin/false"
+    },
+    "remoteEnv": {
+        "VSCODE_IPC_HOOK_CLI": null,
+        "VSCODE_GIT_IPC_HANDLE": null,
+        "REMOTE_CONTAINERS_IPC": null,
+        "REMOTE_CONTAINERS_SOCKETS": null,
+        "REMOTE_CONTAINERS_DISPLAY_SOCK": null,
+        "GPG_AGENT_INFO": "",
+        "BROWSER": "",
+        "WAYLAND_DISPLAY": ""
     },
     "customizations": {
         "vscode": {
