@@ -114,18 +114,7 @@ sed -i 's/^%sudo.*/#&/' /etc/sudoers 2>/dev/null || true
 CONTAINER_USER=$(stat -c '%U' /proc/1 2>/dev/null || echo "vscode")
 deluser "$CONTAINER_USER" sudo 2>/dev/null || true
 
-# 13. Install system-level git pre-push hook that blocks all pushes
-mkdir -p /usr/share/git-core/templates/hooks
-cat > /usr/share/git-core/templates/hooks/pre-push << 'HOOK'
-#!/bin/sh
-echo "ERROR: git push is blocked in this sandboxed environment."
-exit 1
-HOOK
-chmod +x /usr/share/git-core/templates/hooks/pre-push
-# Also install it in the workspace if a git repo exists
-find /workspaces -name ".git" -type d -exec sh -c 'mkdir -p "$1/hooks" && cp /usr/share/git-core/templates/hooks/pre-push "$1/hooks/pre-push"' _ {} \; 2>/dev/null || true
-
-# 14. Make the firewall script immutable (prevents modification even by root)
+# 13. Make the firewall script immutable (prevents modification even by root)
 if ! chattr +i /usr/local/bin/init-firewall.sh 2>/dev/null; then
     echo "WARNING: chattr +i failed — firewall script is NOT immutable (e2fsprogs missing or unsupported filesystem)"
 fi
