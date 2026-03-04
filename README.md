@@ -231,6 +231,29 @@ docker run -it --rm \
   claude-code-sandbox
 ```
 
+**Git Identity:**
+
+The container has no git identity configured by default. Bind-mount your host's git config so the agent can create commits with your name and email:
+
+```bash
+# Find your git config location:
+git config --global --list --show-origin | head -1
+# Common locations: ~/.gitconfig or ~/.config/git/config
+
+# Linux/macOS — mount whichever file your system uses:
+docker run -it --rm \
+  --cap-add=NET_ADMIN --cap-add=NET_RAW \
+  -v claude-code-config:/home/vscode/.claude \
+  -v claude-code-data:/home/vscode/.local/share/claude \
+  -v "$HOME/.config/git/config:/home/vscode/.gitconfig:ro" \
+  -v "$(pwd):/workspaces/project" \
+  claude-code-sandbox
+```
+
+**Important:** The source file must exist on the host, otherwise Docker creates an empty directory at that path which breaks git. Verify with `ls -la ~/.gitconfig` or `ls -la ~/.config/git/config` before using.
+
+This is safe — `user.name` and `user.email` are commit metadata only, not credentials. The credential helper is overridden to `/bin/false` via environment variables, GitHub is blocked by the firewall, and the pre-push hook rejects all pushes.
+
 **Custom Global Instructions:**
 
 Claude Code reads `~/.claude/CLAUDE.md` as global instructions. You can bind-mount a file from your host into the container to provide language- or project-type-specific instructions without rebuilding:
