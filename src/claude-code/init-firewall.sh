@@ -43,11 +43,15 @@ else
 fi
 
 # 5. Allow essential traffic before restrictions
-# DNS — restricted to Docker internal resolver only (blocks DNS tunneling)
-iptables -A OUTPUT -p udp --dport 53 -d 127.0.0.11 -j ACCEPT
-iptables -A OUTPUT -p tcp --dport 53 -d 127.0.0.11 -j ACCEPT
-iptables -A INPUT -p udp --sport 53 -s 127.0.0.11 -j ACCEPT
-iptables -A INPUT -p tcp --sport 53 -s 127.0.0.11 -j ACCEPT
+# DNS — restricted to the container's configured resolver only (blocks DNS tunneling)
+# Docker uses 127.0.0.11 on custom networks, but the default bridge uses the host gateway (e.g. 172.17.0.1)
+DNS_SERVER=$(awk '/^nameserver/ {print $2; exit}' /etc/resolv.conf)
+DNS_SERVER="${DNS_SERVER:-127.0.0.11}"
+echo "DNS resolver: $DNS_SERVER"
+iptables -A OUTPUT -p udp --dport 53 -d "$DNS_SERVER" -j ACCEPT
+iptables -A OUTPUT -p tcp --dport 53 -d "$DNS_SERVER" -j ACCEPT
+iptables -A INPUT -p udp --sport 53 -s "$DNS_SERVER" -j ACCEPT
+iptables -A INPUT -p tcp --sport 53 -s "$DNS_SERVER" -j ACCEPT
 # Localhost
 iptables -A INPUT -i lo -j ACCEPT
 iptables -A OUTPUT -o lo -j ACCEPT

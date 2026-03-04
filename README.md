@@ -124,10 +124,154 @@ Multiple overlapping mitigations for the IPC socket escape vector:
 
 | Mode | IPC Escape Risk | Setup Complexity | IDE Experience |
 |---|---|---|---|
+| **Standalone Docker (Recommended)** | **None — no VS Code in container** | **Low** | **VS Code on host** |
 | VS Code Desktop | Best-effort mitigations (small race window) | Lowest | Full VS Code |
 | Browser (code-server) | None — no host IPC bridge | Medium | VS Code in browser |
 | Headless CLI | None — no IDE at all | Medium | Terminal only |
 | Plain Docker | None — no devcontainer tooling | Highest | Bring your own |
+
+### Standalone Docker (Recommended)
+
+Run Claude in an isolated Docker container with no VS Code processes inside. You edit files with VS Code on the host normally — Claude sees the same files via a bind mount. No IPC sockets, no escape risk.
+
+**Build:**
+
+```bash
+docker build -t claude-code-sandbox -f standalone/Dockerfile .
+```
+
+**Run (Linux/macOS):**
+
+```bash
+docker run -it --rm \
+  --cap-add=NET_ADMIN --cap-add=NET_RAW \
+  -v claude-code-config:/home/vscode/.claude \
+  -v claude-code-data:/home/vscode/.local/share/claude \
+  -v "$(pwd):/workspaces/project" \
+  claude-code-sandbox
+```
+
+**Run (Windows PowerShell):**
+
+```powershell
+docker run -it --rm `
+  --cap-add=NET_ADMIN --cap-add=NET_RAW `
+  -v claude-code-config:/home/vscode/.claude `
+  -v claude-code-data:/home/vscode/.local/share/claude `
+  -v "${PWD}:/workspaces/project" `
+  claude-code-sandbox
+```
+
+**Run (Windows CMD):**
+
+```cmd
+docker run -it --rm ^
+  --cap-add=NET_ADMIN --cap-add=NET_RAW ^
+  -v claude-code-config:/home/vscode/.claude ^
+  -v claude-code-data:/home/vscode/.local/share/claude ^
+  -v "%cd%:/workspaces/project" ^
+  claude-code-sandbox
+```
+
+**Shell alias (Linux/macOS):**
+
+```bash
+alias claude-sandbox='docker run -it --rm \
+  --cap-add=NET_ADMIN --cap-add=NET_RAW \
+  -v claude-code-config:/home/vscode/.claude \
+  -v claude-code-data:/home/vscode/.local/share/claude \
+  -v "$(pwd):/workspaces/project" \
+  claude-code-sandbox'
+```
+
+**PowerShell function (Windows):**
+
+```powershell
+function claude-sandbox {
+    docker run -it --rm `
+      --cap-add=NET_ADMIN --cap-add=NET_RAW `
+      -v claude-code-config:/home/vscode/.claude `
+      -v claude-code-data:/home/vscode/.local/share/claude `
+      -v "${PWD}:/workspaces/project" `
+      claude-code-sandbox @Args
+}
+```
+
+**Workflow:** Open your project in VS Code on the host normally. In a terminal, `cd` to the project and run `claude-sandbox`. Claude edits the same files via bind mount — VS Code sees changes in real-time. No VS Code processes run inside the container.
+
+**Examples:**
+
+```bash
+# Interactive session (default)
+claude-sandbox
+
+# One-shot prompt
+docker run -it --rm \
+  --cap-add=NET_ADMIN --cap-add=NET_RAW \
+  -v "$(pwd):/workspaces/project" \
+  claude-code-sandbox claude -p "Fix the bug"
+
+# Just a shell
+docker run -it --rm \
+  --cap-add=NET_ADMIN --cap-add=NET_RAW \
+  -v "$(pwd):/workspaces/project" \
+  claude-code-sandbox bash
+
+# Pass API key explicitly
+docker run -it --rm \
+  --cap-add=NET_ADMIN --cap-add=NET_RAW \
+  -e ANTHROPIC_API_KEY \
+  -v "$(pwd):/workspaces/project" \
+  claude-code-sandbox
+
+# Max hardening: drop all capabilities first
+docker run -it --rm \
+  --cap-drop=ALL --cap-add=NET_ADMIN --cap-add=NET_RAW \
+  -v "$(pwd):/workspaces/project" \
+  claude-code-sandbox
+```
+
+**Custom Global Instructions:**
+
+Claude Code reads `~/.claude/CLAUDE.md` as global instructions. You can bind-mount a file from your host into the container to provide language- or project-type-specific instructions without rebuilding:
+
+```bash
+# Mount a Python-specific instruction file
+docker run -it --rm \
+  --cap-add=NET_ADMIN --cap-add=NET_RAW \
+  -v claude-code-config:/home/vscode/.claude \
+  -v claude-code-data:/home/vscode/.local/share/claude \
+  -v "$HOME/claude-instructions/python.md:/home/vscode/.claude/CLAUDE.md:ro" \
+  -v "$(pwd):/workspaces/project" \
+  claude-code-sandbox
+```
+
+The file bind mount overlays on top of the named volume, so auth tokens still persist. The `:ro` flag makes it read-only so Claude cannot modify your host instructions. Project-level `CLAUDE.md` files come in automatically through the project bind mount.
+
+Keep a directory of instruction files on your host and create per-language aliases:
+
+```bash
+# ~/claude-instructions/
+#   python.md
+#   al.md
+#   typescript.md
+
+alias claude-python='docker run -it --rm \
+  --cap-add=NET_ADMIN --cap-add=NET_RAW \
+  -v claude-code-config:/home/vscode/.claude \
+  -v claude-code-data:/home/vscode/.local/share/claude \
+  -v "$HOME/claude-instructions/python.md:/home/vscode/.claude/CLAUDE.md:ro" \
+  -v "$(pwd):/workspaces/project" \
+  claude-code-sandbox'
+
+alias claude-al='docker run -it --rm \
+  --cap-add=NET_ADMIN --cap-add=NET_RAW \
+  -v claude-code-config:/home/vscode/.claude \
+  -v claude-code-data:/home/vscode/.local/share/claude \
+  -v "$HOME/claude-instructions/al.md:/home/vscode/.claude/CLAUDE.md:ro" \
+  -v "$(pwd):/workspaces/project" \
+  claude-code-sandbox'
+```
 
 ### VS Code Desktop (Convenience)
 
