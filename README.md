@@ -88,9 +88,9 @@ An iptables-based allowlist firewall configured at container start:
 - **Default-deny outbound**: All traffic blocked except explicitly allowed domains
 - **Allowlist**: Only Anthropic API (`api.anthropic.com`, `claude.ai`, `console.anthropic.com`, `statsig.anthropic.com`) and VS Code marketplace infrastructure
 - **IPv6 disabled**: Prevents bypass through IPv6 stack
-- **DNS restricted**: Only Docker's internal resolver (`127.0.0.11`) is allowed, blocking DNS tunneling
+- **DNS restricted**: Only the container's configured resolver is allowed, blocking DNS tunneling
 - **Host gateway**: Only the Docker host gateway IP is permitted (not the entire subnet)
-- **Git push blocked**: System-level `pre-push` hook rejects all pushes
+- **Git push blocked**: GitHub/GitLab are not on the firewall allowlist, so `git push` fails at the network level
 
 ### Layer 2: Credential Stripping
 
@@ -432,3 +432,6 @@ The IPC escape mitigations are based on research and techniques from:
 ## License
 
 MIT
+
+---
+*Last tested: 2026-03-04*
