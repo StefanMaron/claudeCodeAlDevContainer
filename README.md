@@ -145,7 +145,7 @@ docker build -t claude-code-sandbox -f standalone/Dockerfile .
 ```bash
 docker run -it --rm \
   --cap-add=NET_ADMIN --cap-add=NET_RAW \
-  -v claude-code-config:/home/vscode/.claude \
+  -v "$HOME/claude-sandbox-config:/home/vscode/.claude" \
   -v claude-code-data:/home/vscode/.local/share/claude \
   -v "$(pwd):/workspaces/project" \
   claude-code-sandbox
@@ -156,7 +156,7 @@ docker run -it --rm \
 ```powershell
 docker run -it --rm `
   --cap-add=NET_ADMIN --cap-add=NET_RAW `
-  -v claude-code-config:/home/vscode/.claude `
+  -v "$HOME/claude-sandbox-config:/home/vscode/.claude" `
   -v claude-code-data:/home/vscode/.local/share/claude `
   -v "${PWD}:/workspaces/project" `
   claude-code-sandbox
@@ -167,7 +167,7 @@ docker run -it --rm `
 ```cmd
 docker run -it --rm ^
   --cap-add=NET_ADMIN --cap-add=NET_RAW ^
-  -v claude-code-config:/home/vscode/.claude ^
+  -v "%USERPROFILE%\claude-sandbox-config:/home/vscode/.claude" ^
   -v claude-code-data:/home/vscode/.local/share/claude ^
   -v "%cd%:/workspaces/project" ^
   claude-code-sandbox
@@ -178,7 +178,7 @@ docker run -it --rm ^
 ```bash
 alias claude-sandbox='docker run -it --rm \
   --cap-add=NET_ADMIN --cap-add=NET_RAW \
-  -v claude-code-config:/home/vscode/.claude \
+  -v "$HOME/claude-sandbox-config:/home/vscode/.claude" \
   -v claude-code-data:/home/vscode/.local/share/claude \
   -v "$(pwd):/workspaces/project" \
   claude-code-sandbox'
@@ -190,7 +190,7 @@ alias claude-sandbox='docker run -it --rm \
 function claude-sandbox {
     docker run -it --rm `
       --cap-add=NET_ADMIN --cap-add=NET_RAW `
-      -v claude-code-config:/home/vscode/.claude `
+      -v "$HOME/claude-sandbox-config:/home/vscode/.claude" `
       -v claude-code-data:/home/vscode/.local/share/claude `
       -v "${PWD}:/workspaces/project" `
       claude-code-sandbox @Args
@@ -243,7 +243,7 @@ git config --global --list --show-origin | head -1
 # Linux/macOS — mount whichever file your system uses:
 docker run -it --rm \
   --cap-add=NET_ADMIN --cap-add=NET_RAW \
-  -v claude-code-config:/home/vscode/.claude \
+  -v "$HOME/claude-sandbox-config:/home/vscode/.claude" \
   -v claude-code-data:/home/vscode/.local/share/claude \
   -v "$HOME/.config/git/config:/home/vscode/.gitconfig:ro" \
   -v "$(pwd):/workspaces/project" \
@@ -254,47 +254,64 @@ docker run -it --rm \
 
 This is safe — `user.name` and `user.email` are commit metadata only, not credentials. The credential helper is overridden to `/bin/false` via environment variables, GitHub is blocked by the firewall, and the pre-push hook rejects all pushes.
 
-**Custom Global Instructions:**
+**Host Config Folder:**
 
-Claude Code reads `~/.claude/CLAUDE.md` as global instructions. You can bind-mount a file from your host into the container to provide language- or project-type-specific instructions without rebuilding:
+Instead of using a named Docker volume, mount a dedicated host folder as `~/.claude/` inside the container. This gives you full control over Claude Code's configuration — `CLAUDE.md` instructions, custom commands, settings, and more — while keeping auth credentials in one place.
+
+**Initial setup:**
 
 ```bash
-# Mount a Python-specific instruction file
-docker run -it --rm \
-  --cap-add=NET_ADMIN --cap-add=NET_RAW \
-  -v claude-code-config:/home/vscode/.claude \
-  -v claude-code-data:/home/vscode/.local/share/claude \
-  -v "$HOME/claude-instructions/python.md:/home/vscode/.claude/CLAUDE.md:ro" \
-  -v "$(pwd):/workspaces/project" \
-  claude-code-sandbox
+# Create a config folder (one per language/use-case, or a shared one)
+mkdir -p ~/claude-sandbox-config/commands
+
+# Copy your auth credentials (OAuth tokens — required for Claude to authenticate)
+cp ~/.claude/.credentials.json ~/claude-sandbox-config/
+
+# Add global instructions
+cat > ~/claude-sandbox-config/CLAUDE.md << 'EOF'
+# My Sandbox Instructions
+
+Add your language-specific rules and conventions here.
+EOF
 ```
 
-The file bind mount overlays on top of the named volume, so auth tokens still persist. The `:ro` flag makes it read-only so Claude cannot modify your host instructions. Project-level `CLAUDE.md` files come in automatically through the project bind mount.
+The folder is mounted read-write because Claude Code writes runtime data (history, sessions, stats) during use. Your instructions and credentials persist across container restarts. Project-level `CLAUDE.md` files come in automatically through the project bind mount.
 
-Keep a directory of instruction files on your host and create per-language aliases:
+**Per-language config folders:**
+
+Create separate config folders for different languages or use-cases, each with their own `CLAUDE.md` and custom commands:
 
 ```bash
-# ~/claude-instructions/
-#   python.md
-#   al.md
-#   typescript.md
-
-alias claude-python='docker run -it --rm \
-  --cap-add=NET_ADMIN --cap-add=NET_RAW \
-  -v claude-code-config:/home/vscode/.claude \
-  -v claude-code-data:/home/vscode/.local/share/claude \
-  -v "$HOME/claude-instructions/python.md:/home/vscode/.claude/CLAUDE.md:ro" \
-  -v "$(pwd):/workspaces/project" \
-  claude-code-sandbox'
+# ~/claude-al-development/    — AL / Business Central
+# ~/claude-python/             — Python projects
+# ~/claude-typescript/         — TypeScript projects
 
 alias claude-al='docker run -it --rm \
   --cap-add=NET_ADMIN --cap-add=NET_RAW \
-  -v claude-code-config:/home/vscode/.claude \
+  -v "$HOME/claude-al-development:/home/vscode/.claude" \
   -v claude-code-data:/home/vscode/.local/share/claude \
-  -v "$HOME/claude-instructions/al.md:/home/vscode/.claude/CLAUDE.md:ro" \
+  -v "$(pwd):/workspaces/project" \
+  claude-code-sandbox'
+
+alias claude-python='docker run -it --rm \
+  --cap-add=NET_ADMIN --cap-add=NET_RAW \
+  -v "$HOME/claude-python:/home/vscode/.claude" \
+  -v claude-code-data:/home/vscode/.local/share/claude \
   -v "$(pwd):/workspaces/project" \
   claude-code-sandbox'
 ```
+
+**What to put in the config folder:**
+
+| File/Directory | Purpose |
+|---|---|
+| `.credentials.json` | OAuth tokens (copy from `~/.claude/.credentials.json`) |
+| `CLAUDE.md` | Global instructions loaded by Claude Code |
+| `commands/` | Custom slash commands (`.md` files) |
+| `settings.json` | Claude Code settings (permissions, model, etc.) |
+| `settings.local.json` | Local permission overrides |
+
+Runtime files like `history.jsonl`, `sessions/`, `debug/`, and `statsig/` will be created automatically in the folder during use.
 
 ### VS Code Desktop (Convenience)
 
@@ -334,7 +351,7 @@ devcontainer build --workspace-folder . --image-name claude-sandbox
 docker run -it --name claude-sandbox \
     --cap-drop=ALL --cap-add=NET_ADMIN --cap-add=NET_RAW \
     -p 8080:8080 \
-    -v claude-code-config:/home/vscode/.claude \
+    -v "$HOME/claude-sandbox-config:/home/vscode/.claude" \
     -v claude-code-data:/home/vscode/.local/share/claude \
     -v "$(pwd):/workspaces/project" \
     -e GIT_TERMINAL_PROMPT=0 \
@@ -359,7 +376,7 @@ devcontainer build --workspace-folder . --image-name claude-sandbox
 # Then use plain Docker from here on — no devcontainer CLI needed
 docker run -it --rm \
     --cap-drop=ALL --cap-add=NET_ADMIN --cap-add=NET_RAW \
-    -v claude-code-config:/home/vscode/.claude \
+    -v "$HOME/claude-sandbox-config:/home/vscode/.claude" \
     -v claude-code-data:/home/vscode/.local/share/claude \
     -v "$(pwd):/workspaces/project" \
     -e GIT_TERMINAL_PROMPT=0 \
@@ -386,7 +403,7 @@ devcontainer exec --workspace-folder . claude --dangerously-skip-permissions -p 
 # With plain Docker (using pre-built image from above)
 docker run -it --rm \
     --cap-drop=ALL --cap-add=NET_ADMIN --cap-add=NET_RAW \
-    -v claude-code-config:/home/vscode/.claude \
+    -v "$HOME/claude-sandbox-config:/home/vscode/.claude" \
     -v claude-code-data:/home/vscode/.local/share/claude \
     -v "$(pwd):/workspaces/project" \
     -e GIT_TERMINAL_PROMPT=0 \

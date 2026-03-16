@@ -39,6 +39,9 @@ ENV GIT_CONFIG_VALUE_0=/bin/false
 ENV BROWSER=""
 ENV GPG_AGENT_INFO=""
 
+# Enable LSP tool for code intelligence (go-to-definition, find-references, etc.)
+ENV ENABLE_LSP_TOOL=1
+
 # Ensure claude is on PATH for all shell types (profile.d only runs for login shells)
 ENV PATH="/home/vscode/.local/bin:${PATH}"
 
